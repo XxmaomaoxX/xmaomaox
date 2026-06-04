@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>植物病害检测系统 - YOLOv8 + 知识库</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        @media (min-width: 768px) {
+            body {
+                padding: 20px;
+            }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                padding: 30px;
+            }
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 24px;
+            font-size: 0.9rem;
+        }
+
+        .api-status {
+            text-align: center;
+            padding: 8px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+
+        .api-status.online {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .api-status.offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 20px;
+            padding: 32px 20px;
+            text-align: center;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 24px;
+        }
+
+        .upload-area:hover, .upload-area.drag-over {
+            border-color: #764ba2;
+            background: #e8e8ff;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 48px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s;
+            margin: 5px;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .content-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        @media (min-width: 1024px) {
+            .content-wrapper {
+                flex-direction: row;
+                gap: 30px;
+            }
+        }
+
+        .image-panel {
+            flex: 1.2;
+            min-width: 0;
+        }
+
+        .info-panel {
+            flex: 1.5;
+            min-width: 0;
+        }
+
+        .disease-panel {
+            flex: 1.3;
+            min-width: 0;
+        }
+
+        .image-container, .detection-list, .disease-info {
+            background: #f8f9fa;
+            border-radius: 20px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .detection-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .detection-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .detection-item {
+            background: white;
+            margin: 12px 0;
+            padding: 12px 16px;
+            border-radius: 16px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .detection-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .detection-item.active {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+
+        .detection-class {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 1rem;
+            margin-bottom: 6px;
+        }
+
+        .detection-confidence {
+            color: #28a745;
+            font-size: 0.85rem;
+        }
+
+        .detection-bbox {
+            color: #666;
+            font-size: 0.7rem;
+            margin-top: 6px;
+            font-family: monospace;
+        }
+
+        .stats {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .stats-number {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .disease-info h3 {
+            color: #333;
+            margin-bottom: 12px;
+            font-size: 1.2rem;
+        }
+
+        .disease-name {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .info-section {
+            margin-bottom: 16px;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-content {
+            color: #333;
+            line-height: 1.6;
+            font-size: 0.9rem;
+            background: white;
+            padding: 12px;
+            border-radius: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .severity-high {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .severity-medium {
+            color: #ffc107;
+            font-weight: bold;
+        }
+
+        .severity-low {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .severity-healthy {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px 16px;
+            border-radius: 16px;
+            margin-top: 16px;
+            display: none;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 1rem;
+            color: #666;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .history-item {
+            background: white;
+            margin: 12px 0;
+            padding: 12px 16px;
+            border-radius: 16px;
+            border-left: 4px solid #28a745;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .history-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .history-name {
+            font-weight: 700;
+            color: #28a745;
+            margin-bottom: 6px;
+        }
+
+        .history-time {
+            font-size: 0.7rem;
+            color: #999;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .badge-severe {
+            background: #dc3545;
+            color: white;
+        }
+
+        .badge-medium {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .badge-healthy {
+            background: #28a745;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 16px;
+            }
+            .btn {
+                padding: 10px 16px;
+                font-size: 14px;
+            }
+            .disease-name {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌱 植物病害智能检测系统</h1>
+        <p class="subtitle">基于 YOLOv8 深度学习模型 + 植物病害知识库</p>
+
+        <div id="apiStatus" class="api-status">🔌 正在连接API服务...</div>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📸</div>
+            <p>点击或拖拽植物病害图片上传</p>
+            <p style="font-size: 12px; color: #666; margin-top: 8px;">支持 JPG、PNG、JPEG 格式</p>
+            <input type="file" id="fileInput" class="file-input" accept="image/jpeg,image/png,image/jpg">
+            <button class="btn" id="selectBtn">📁 选择图片</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 12px;">AI 正在识别中，请稍候...</p>
+        </div>
+
+        <div class="content-wrapper" id="contentWrapper" style="display: none;">
+            <div class="image-panel">
+                <div class="image-container">
+                    <h3>🔍 检测结果</h3>
+                    <img id="resultImage" class="detection-image" alt="检测结果">
+                </div>
+            </div>
+
+            <div class="info-panel">
+                <div class="stats" id="stats">
+                    <div>检测到物体</div>
+                    <div class="stats-number" id="detectionCount">0</div>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('detections')">📋 识别列表</button>
+                    <button class="tab" onclick="switchTab('history')">📜 检测历史</button>
+                </div>
+
+                <div id="detectionsTab" class="tab-content active">
+                    <div class="detection-list" id="detectionList"></div>
+                </div>
+
+                <div id="historyTab" class="tab-content">
+                    <div class="detection-list" id="historyList"></div>
+                </div>
+            </div>
+
+            <div class="disease-panel">
+                <div class="disease-info" id="diseaseInfo">
+                    <h3>📖 病害详细信息</h3>
+                    <div id="diseaseDetail">
+                        <p style="color: #999; text-align: center; padding: 40px;">点击左侧识别列表查看详细信息</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5000/api';
+
+        let currentDetections = [];
+        let currentDiseaseInfo = null;
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            if (tabName === 'detections') {
+                document.querySelector('.tab').classList.add('active');
+                document.getElementById('detectionsTab').classList.add('active');
+                loadDetections();
+            } else if (tabName === 'history') {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('historyTab').classList.add('active');
+                loadHistory();
+            }
+        }
+
+        function getSeverityBadge(severity) {
+            if (severity === '严重') return '<span class="badge badge-severe">严重</span>';
+            if (severity === '中等') return '<span class="badge badge-medium">中等</span>';
+            if (severity === '健康') return '<span class="badge badge-healthy">健康</span>';
+            return '';
+        }
+
+        function loadDetections() {
+            if (currentDetections.length === 0) {
+                document.getElementById('detectionList').innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">✨ 未检测到任何物体</div>';
+            } else {
+                document.getElementById('detectionList').innerHTML = currentDetections.map((det, idx) => `
+                    <div class="detection-item" onclick="showDiseaseDetail(${idx})">
+                        <div class="detection-class">
+                            🎯 ${escapeHtml(det.class_name)}
+                            ${det.disease_info ? getSeverityBadge(det.disease_info.severity) : ''}
+                        </div>
+                        <div class="detection-confidence">📊 置信度: ${(det.confidence * 100).toFixed(1)}%</div>
+                        <div class="detection-bbox">📍 位置: [${det.bbox.join(', ')}]</div>
+                        ${det.disease_info ? '<div style="color: #28a745; font-size: 12px; margin-top: 5px;">✅ 已匹配知识库信息</div>' : '<div style="color: #ffc107; font-size: 12px; margin-top: 5px;">⚠️ 暂无知识库信息</div>'}
+                    </div>
+                `).join('');
+            }
+        }
+
+        async function loadHistory() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/history`);
+                const data = await response.json();
+
+                if (data.success && data.history.length > 0) {
+                    document.getElementById('historyList').innerHTML = data.history.map(record => `
+                        <div class="history-item" onclick="getHistoryDiseaseInfo('${record.disease_name}')">
+                            <div class="history-name">🔍 ${escapeHtml(record.disease_name)}</div>
+                            <div class="detection-confidence">📊 置信度: ${(record.confidence * 100).toFixed(1)}%</div>
+                            <div class="history-time">🕐 ${new Date(record.detection_time).toLocaleString()}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('historyList').innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">📭 暂无检测历史</div>';
+                }
+            } catch (error) {
+                console.error('加载历史失败:', error);
+                document.getElementById('historyList').innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">加载失败</div>';
+            }
+        }
+
+        async function getHistoryDiseaseInfo(diseaseName) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/disease/${encodeURIComponent(diseaseName)}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    showDiseaseInfo(data.disease_info);
+                } else {
+                    showDiseaseInfo(null, diseaseName);
+                }
+            } catch (error) {
+                console.error('获取病害信息失败:', error);
+                showDiseaseInfo(null, diseaseName);
+            }
+        }
+
+        function showDiseaseDetail(index) {
+            const detection = currentDetections[index];
+            if (detection.disease_info) {
+                showDiseaseInfo(detection.disease_info);
+            } else {
+                showDiseaseInfo(null, detection.class_name);
+            }
+        }
+
+        function showDiseaseInfo(info, diseaseName = null) {
+            const detailDiv = document.getElementById('diseaseDetail');
+
+            if (info) {
+                let severityClass = '';
+                if (info.severity === '严重') severityClass = 'severity-high';
+                else if (info.severity === '中等') severityClass = 'severity-medium';
+                else if (info.severity === '健康') severityClass = 'severity-healthy';
+                else severityClass = 'severity-low';
+
+                detailDiv.innerHTML = `
+                    <div class="disease-name">
+                        🌿 ${escapeHtml(info.disease_name)}
+                        ${getSeverityBadge(info.severity)}
+                    </div>
+
+                    <div class="info-section">
+                        <div class="info-label">
+                            📋 主要症状
+                        </div>
+                        <div class="info-content">${escapeHtml(info.symptoms)}</div>
+                    </div>
+
+                    <div class="info-section">
+                        <div class="info-label">
+                            🌧️ 环境原因
+                        </div>
+                        <div class="info-content">${escapeHtml(info.environmental_causes)}</div>
+                    </div>
+
+                    <div class="info-section">
+                        <div class="info-label">
+                            💊 防治措施
+                        </div>
+                        <div class="info-content">${escapeHtml(info.control_measures)}</div>
+                    </div>
+
+                    <div class="info-section">
+                        <div class="info-label">
+                            🛡️ 预防方法
+                        </div>
+                        <div class="info-content">${escapeHtml(info.prevention_methods)}</div>
+                    </div>
+                `;
+            } else {
+                detailDiv.innerHTML = `
+                    <div class="disease-name">⚠️ 未找到详细信息</div>
+                    <div class="info-section">
+                        <div class="info-content">
+                            <p><strong>病害名称：</strong>${escapeHtml(diseaseName || '未知')}</p>
+                            <p style="margin-top: 10px;">该病害暂无知识库信息，请联系管理员添加。</p>
+                            <p style="margin-top: 10px; font-size: 12px; color: #666;">💡 提示：您可以在数据库中添加此病害的详细信息</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        async function handleImageUpload(file) {
+            if (!file || !file.type.startsWith('image/')) {
+                showError('请选择有效的图片文件');
+                return;
+            }
+
+            loading.style.display = 'block';
+            contentWrapper.style.display = 'none';
+            errorMessage.style.display = 'none';
+
+            try {
+                const formData = new FormData();
+                formData.append('image', file);
+
+                const response = await fetch(`${API_BASE_URL}/predict`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                 // 添加调试代码
+                console.log('API返回的完整数据:', result);
+
+                if (result.detections && result.detections.length > 0) {
+                    console.log('检测到的病害:', result.detections[0].class_name);
+                    console.log('病害信息:', result.detections[0].disease_info);
+                }
+
+                if (!result.success) {
+                    throw new Error(result.error);
+                }
+
+                currentDetections = result.detections;
+                resultImage.src = result.annotated_image;
+                detectionCount.textContent = result.count;
+
+                loadDetections();
+
+                // 自动显示第一个检测到的病害信息
+                if (result.detections.length > 0 && result.detections[0].disease_info) {
+                    showDiseaseInfo(result.detections[0].disease_info);
+                } else if (result.detections.length > 0) {
+                    showDiseaseInfo(null, result.detections[0].class_name);
+                } else {
+                    document.getElementById('diseaseDetail').innerHTML = '<p style="color: #999; text-align: center; padding: 40px;">未检测到任何病害</p>';
+                }
+
+                contentWrapper.style.display = 'flex';
+
+                if (window.innerWidth <= 768) {
+                    setTimeout(() => {
+                        contentWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                }
+            } catch (error) {
+                console.error('检测失败:', error);
+                showError(`检测失败: ${error.message}`);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            setTimeout(() => {
+                errorMessage.style.display = 'none';
+            }, 5000);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        async function checkAPIStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                const data = await response.json();
+                if (data.status === 'healthy') {
+                    apiStatus.textContent = '✅ API服务已连接 | 数据库已就绪';
+                    apiStatus.className = 'api-status online';
+                } else {
+                    throw new Error('服务异常');
+                }
+            } catch (error) {
+                apiStatus.textContent = '❌ 无法连接到API服务，请确保后端已启动 (python app.py)';
+                apiStatus.className = 'api-status offline';
+            }
+        }
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const selectBtn = document.getElementById('selectBtn');
+        const loading = document.getElementById('loading');
+        const contentWrapper = document.getElementById('contentWrapper');
+        const resultImage = document.getElementById('resultImage');
+        const detectionCount = document.getElementById('detectionCount');
+        const errorMessage = document.getElementById('errorMessage');
+        const apiStatus = document.getElementById('apiStatus');
+
+        selectBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleImageUpload(e.target.files[0]);
+            }
+            fileInput.value = '';
+        });
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleImageUpload(file);
+            } else {
+                showError('请拖拽图片文件');
+            }
+        });
+
+        window.addEventListener('load', () => {
+            checkAPIStatus();
+            setInterval(checkAPIStatus, 30000);
+        });
+    </script>
+</body>
+</html>

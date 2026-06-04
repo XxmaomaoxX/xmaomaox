@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统性能监控仪表盘</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 8px;
+        }
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            border-left: 4px solid #667eea;
+            padding-left: 12px;
+        }
+        .chart-box {
+            height: 320px;
+        }
+        .alert-list {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .alert-item {
+            padding: 12px;
+            border-left: 4px solid;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .alert-error { border-left-color: #dc3545; }
+        .alert-warning { border-left-color: #ffc107; }
+        .alert-info { border-left-color: #17a2b8; }
+        .refresh-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 48px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .refresh-btn:hover {
+            background: #5a67d8;
+            transform: scale(1.02);
+        }
+        .no-data {
+            text-align: center;
+            padding: 60px;
+            color: #999;
+        }
+        .time-info {
+            background: #e8f4f8;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 系统性能监控仪表盘</h1>
+            <p>植物病害智能检测系统 - 实时性能监控 | 时区: 北京时间 (UTC+8)</p>
+        </div>
+
+        <!-- 时间信息提示 -->
+        <div class="time-info" id="timeInfo">
+            📅 当前服务器时间: <span id="serverTime">加载中...</span>
+        </div>
+
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-value">-</div>
+                <div class="stat-label">等待数据...</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">📈 API响应时间趋势</div>
+            <div id="responseTimeChart" class="chart-box"></div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">🤖 模型推理性能趋势</div>
+            <div id="inferenceChart" class="chart-box"></div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">💻 系统资源使用</div>
+            <div id="resourceChart" class="chart-box"></div>
+        </div>
+
+        <div class="alert-list">
+            <div class="chart-title">⚠️ 最近告警</div>
+            <div id="alertList"></div>
+        </div>
+
+        <button class="refresh-btn" onclick="refreshAll()">🔄 刷新数据</button>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api/monitoring';
+        let charts = {};
+
+        // ========== 方案四：前端时间格式化函数 ==========
+
+        /**
+         * 将各种时间格式转换为本地时间字符串
+         * @param {string} timeStr - 输入的时间字符串
+         * @returns {string} 格式化后的本地时间
+         */
+        function formatLocalTime(timeStr) {
+            if (!timeStr) return '';
+
+            try {
+                // 方法1：如果已经是标准ISO格式
+                let date = new Date(timeStr);
+
+                // 方法2：如果是SQLite格式 (YYYY-MM-DD HH:MM:SS)
+                if (isNaN(date.getTime())) {
+                    // 将空格替换为T，使其符合ISO标准
+                    const isoStr = timeStr.replace(' ', 'T');
+                    date = new Date(isoStr);
+                }
+
+                // 方法3：如果还是无效，尝试直接解析
+                if (isNaN(date.getTime())) {
+                    date = new Date(timeStr + ' UTC');
+                }
+
+                // 格式化为本地时间字符串
+                if (!isNaN(date.getTime())) {
+                    return date.toLocaleString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    });
+                }
+
+                return timeStr;
+            } catch (e) {
+                console.warn('时间格式化失败:', timeStr, e);
+                return timeStr;
+            }
+        }
+
+        /**
+         * 获取图表x轴的时间标签（简化显示）
+         * @param {string} timeStr - 完整时间字符串
+         * @returns {string} 简化后的时间标签
+         */
+        function getChartTimeLabel(timeStr) {
+            if (!timeStr) return '';
+
+            try {
+                let date = new Date(timeStr);
+                if (isNaN(date.getTime())) {
+                    const isoStr = timeStr.replace(' ', 'T');
+                    date = new Date(isoStr);
+                }
+                if (isNaN(date.getTime())) {
+                    return timeStr.substring(11, 16); // 取 HH:MM
+                }
+                // 返回 HH:MM 格式
+                return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+            } catch (e) {
+                return timeStr;
+            }
+        }
+
+        /**
+         * 获取当前服务器时间（本地）
+         */
+        function updateServerTime() {
+            const now = new Date();
+            document.getElementById('serverTime').innerHTML =
+                now.toLocaleString('zh-CN', { hour12: false });
+        }
+
+        // ========== API调用函数 ==========
+
+        async function fetchMetrics() {
+            try {
+                const response = await fetch(`${API_BASE}/metrics`);
+                return await response.json();
+            } catch (error) {
+                console.error('获取监控数据失败:', error);
+                return null;
+            }
+        }
+
+        async function fetchTimeseries() {
+            try {
+                const response = await fetch(`${API_BASE}/metrics/timeseries`);
+                const data = await response.json();
+                console.log('获取到的时间序列数据:', data);
+                return data;
+            } catch (error) {
+                console.error('获取时间序列数据失败:', error);
+                return null;
+            }
+        }
+
+        async function fetchSystemMetrics() {
+            try {
+                const response = await fetch(`${API_BASE}/system`);
+                return await response.json();
+            } catch (error) {
+                console.error('获取系统指标失败:', error);
+                return null;
+            }
+        }
+
+        async function fetchAlerts() {
+            try {
+                const response = await fetch(`${API_BASE}/alerts?acknowledged=false`);
+                return await response.json();
+            } catch (error) {
+                console.error('获取告警失败:', error);
+                return null;
+            }
+        }
+
+        // ========== 图表更新函数 ==========
+
+        function updateStatsGrid(metrics) {
+            const grid = document.getElementById('statsGrid');
+            if (!metrics || !metrics.success) {
+                return;
+            }
+
+            const summary = metrics.summary || {};
+            const modelStats = metrics.model_statistics || {};
+
+            grid.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${summary.total_requests || 0}</div>
+                    <div class="stat-label">总请求数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${modelStats.avg_total_time || 0}ms</div>
+                    <div class="stat-label">平均响应时间</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${summary.total_errors || 0}</div>
+                    <div class="stat-label">错误请求数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${modelStats.total_inferences || 0}</div>
+                    <div class="stat-label">模型推理次数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${modelStats.avg_inference_time || 0}ms</div>
+                    <div class="stat-label">平均推理时间</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${modelStats.avg_detections || 0}</div>
+                    <div class="stat-label">平均检测数量</div>
+                </div>
+            `;
+        }
+
+        function updateResponseTimeChart(timeseries) {
+            const chart = charts.responseTimeChart;
+            if (!chart) return;
+
+            if (!timeseries || !timeseries.success || !timeseries.api_trend || timeseries.api_trend.length === 0) {
+                chart.setOption({
+                    title: {
+                        show: true,
+                        text: '暂无数据，请先发送API请求',
+                        left: 'center',
+                        top: 'center',
+                        textStyle: { color: '#999', fontSize: 14 }
+                    },
+                    xAxis: { data: [] },
+                    series: [{ data: [] }]
+                });
+                return;
+            }
+
+            // 使用方案四：前端格式化时间
+            const times = timeseries.api_trend.map(item => {
+                // 使用格式化函数处理时间
+                return getChartTimeLabel(item.time);
+            });
+
+            const fullTimes = timeseries.api_trend.map(item => item.time);
+            const values = timeseries.api_trend.map(item => item.avg_response_time);
+
+            chart.setOption({
+                title: { show: false },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function(params) {
+                        const index = params[0].dataIndex;
+                        const fullTime = fullTimes[index];
+                        const formattedTime = formatLocalTime(fullTime);
+                        return `<strong>${formattedTime}</strong><br/>响应时间: ${params[0].value}ms`;
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: times,
+                    name: '时间',
+                    axisLabel: {
+                        rotate: 45,
+                        interval: 'auto'
+                    }
+                },
+                yAxis: { type: 'value', name: '响应时间(ms)' },
+                series: [{
+                    type: 'line',
+                    data: values,
+                    smooth: true,
+                    name: '平均响应时间',
+                    lineStyle: { color: '#667eea', width: 2 },
+                    areaStyle: { opacity: 0.1 },
+                    symbol: 'circle',
+                    symbolSize: 6
+                }],
+                grid: {
+                    containLabel: true,
+                    bottom: 30
+                }
+            });
+        }
+
+        function updateInferenceChart(timeseries) {
+            const chart = charts.inferenceChart;
+            if (!chart) return;
+
+            if (!timeseries || !timeseries.success || !timeseries.model_trend || timeseries.model_trend.length === 0) {
+                chart.setOption({
+                    title: {
+                        show: true,
+                        text: '暂无数据，请先发送检测请求',
+                        left: 'center',
+                        top: 'center',
+                        textStyle: { color: '#999', fontSize: 14 }
+                    },
+                    xAxis: { data: [] },
+                    series: [{ data: [] }]
+                });
+                return;
+            }
+
+            // 使用方案四：前端格式化时间
+            const times = timeseries.model_trend.map(item => {
+                return getChartTimeLabel(item.time);
+            });
+
+            const fullTimes = timeseries.model_trend.map(item => item.time);
+            const inferenceTimes = timeseries.model_trend.map(item => item.avg_inference_time);
+            const totalTimes = timeseries.model_trend.map(item => item.avg_total_time);
+
+            chart.setOption({
+                title: { show: false },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function(params) {
+                        const index = params[0].dataIndex;
+                        const fullTime = fullTimes[index];
+                        const formattedTime = formatLocalTime(fullTime);
+                        let result = `<strong>${formattedTime}</strong><br/>`;
+                        params.forEach(p => {
+                            result += `${p.marker} ${p.seriesName}: ${p.value}ms<br/>`;
+                        });
+                        return result;
+                    }
+                },
+                legend: {
+                    data: ['推理时间', '总处理时间'],
+                    top: 0
+                },
+                xAxis: {
+                    type: 'category',
+                    data: times,
+                    name: '时间',
+                    axisLabel: {
+                        rotate: 45,
+                        interval: 'auto'
+                    }
+                },
+                yAxis: { type: 'value', name: '时间(ms)' },
+                series: [
+                    {
+                        type: 'line',
+                        data: inferenceTimes,
+                        name: '推理时间',
+                        color: '#28a745',
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 6
+                    },
+                    {
+                        type: 'line',
+                        data: totalTimes,
+                        name: '总处理时间',
+                        color: '#ffc107',
+                        smooth: true,
+                        symbol: 'diamond',
+                        symbolSize: 6
+                    }
+                ],
+                grid: {
+                    containLabel: true,
+                    bottom: 30,
+                    top: 40
+                }
+            });
+        }
+
+        function updateResourceChart(systemMetrics) {
+            const chart = charts.resourceChart;
+            if (!chart) return;
+
+            if (!systemMetrics || !systemMetrics.success) {
+                chart.setOption({
+                    title: {
+                        show: true,
+                        text: '等待系统数据采集...',
+                        left: 'center',
+                        top: 'center',
+                        textStyle: { color: '#999', fontSize: 14 }
+                    },
+                    xAxis: { data: [] },
+                    series: [{ data: [] }]
+                });
+                return;
+            }
+
+            const current = systemMetrics.current;
+
+            chart.setOption({
+                title: { show: false },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    formatter: function(params) {
+                        return `${params[0].name}<br/>使用率: ${params[0].value}%`;
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: ['CPU', '内存', 'GPU'],
+                    axisLabel: { fontSize: 12 }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '使用率(%)',
+                    max: 100,
+                    axisLabel: { formatter: '{value}%' }
+                },
+                series: [{
+                    type: 'bar',
+                    data: [
+                        current.cpu_percent || 0,
+                        current.memory_percent || 0,
+                        current.gpu_utilization || 0
+                    ],
+                    itemStyle: {
+                        color: '#667eea',
+                        borderRadius: [4, 4, 0, 0]
+                    },
+                    label: {
+                        show: true,
+                        position: 'top',
+                        formatter: '{c}%'
+                    }
+                }]
+            });
+        }
+
+        function updateAlertList(alerts) {
+            const container = document.getElementById('alertList');
+            if (!alerts || !alerts.success || alerts.alerts.length === 0) {
+                container.innerHTML = '<div class="no-data">✅ 暂无未处理告警</div>';
+                return;
+            }
+
+            container.innerHTML = alerts.alerts.map(alert => `
+                <div class="alert-item alert-${alert.level === 'ERROR' ? 'error' : alert.level === 'WARNING' ? 'warning' : 'info'}">
+                    <strong>[${alert.level}]</strong> ${alert.type}<br>
+                    ${alert.message}<br>
+                    <small style="color:#999;">📅 ${formatLocalTime(alert.time)}</small>
+                </div>
+            `).join('');
+        }
+
+        async function refreshAll() {
+            console.log('🔄 刷新数据...', new Date().toLocaleString());
+
+            updateServerTime();
+
+            const [metrics, timeseries, systemMetrics, alerts] = await Promise.all([
+                fetchMetrics(),
+                fetchTimeseries(),
+                fetchSystemMetrics(),
+                fetchAlerts()
+            ]);
+
+            console.log('时间序列数据详情:', timeseries);
+
+            updateStatsGrid(metrics);
+            updateResponseTimeChart(timeseries);
+            updateInferenceChart(timeseries);
+            updateResourceChart(systemMetrics);
+            updateAlertList(alerts);
+        }
+
+        // ========== 图表初始化 ==========
+
+        function initCharts() {
+            charts.responseTimeChart = echarts.init(document.getElementById('responseTimeChart'));
+            charts.inferenceChart = echarts.init(document.getElementById('inferenceChart'));
+            charts.resourceChart = echarts.init(document.getElementById('resourceChart'));
+
+            // 监听窗口大小变化，重绘图表
+            window.addEventListener('resize', () => {
+                Object.values(charts).forEach(chart => chart && chart.resize());
+            });
+        }
+
+        // ========== 页面加载 ==========
+
+        initCharts();
+        refreshAll();
+
+        // 每30秒自动刷新
+        setInterval(refreshAll, 30000);
+
+        // 每5秒更新时间显示
+        setInterval(updateServerTime, 5000);
+    </script>
+</body>
+</html>
