@@ -1,19 +1,31 @@
 一．环境配置
 1.1环境
 1.1.1硬件环境
+
 硬件名	硬件型号
+
 CPU	AMD Ryzen 77435H 3.10GHz
+
 GPU	NVIDIA GeForce RTX 4060 Laptop GPU (8GB)
+
 内存	16GB DDR4
+
 硬盘	512GB SSD
 	
 1.1.2软件环境
+
 组件	版本
+
 操作系统	Windows 11
+
 Python	13.11
+
 PyTorch	2.11.0+cu130
+
 CUDA	13.0
+
 Flask	2.0+
+
 SQLite	3.x
 
 1.2 修改模型路径
